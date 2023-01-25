@@ -207,7 +207,9 @@ class ReferenceHelper
             if ($this->cellReferenceHelper->cellAddressInDeleteRange($cellAddress) === true) {
                 $worksheet->setHyperlink($cellAddress, null);
             } elseif ($cellAddress !== $newReference) {
-                $worksheet->setHyperlink($newReference, $value);
+                if ($newReference) {
+                    $worksheet->setHyperlink($newReference, $value);
+                }
                 $worksheet->setHyperlink($cellAddress, null);
             }
         }
@@ -270,8 +272,10 @@ class ReferenceHelper
             $newReference = $this->updateCellReference($cellAddress);
             if ($cellAddress !== $newReference) {
                 $dataValidation->setSqref($newReference);
-                $worksheet->setDataValidation($newReference, $dataValidation);
                 $worksheet->setDataValidation($cellAddress, null);
+                if ($newReference) {
+                    $worksheet->setDataValidation($newReference, $dataValidation);
+                }
             }
         }
     }
@@ -287,7 +291,9 @@ class ReferenceHelper
         $aNewMergeCells = []; // the new array of all merge cells
         foreach ($aMergeCells as $cellAddress => &$value) {
             $newReference = $this->updateCellReference($cellAddress);
-            $aNewMergeCells[$newReference] = $newReference;
+            if ($newReference) {
+                $aNewMergeCells[$newReference] = $newReference;
+            }
         }
         $worksheet->setMergeCells($aNewMergeCells); // replace the merge cells array
     }
@@ -308,8 +314,10 @@ class ReferenceHelper
         foreach ($aProtectedCells as $cellAddress => $value) {
             $newReference = $this->updateCellReference($cellAddress);
             if ($cellAddress !== $newReference) {
-                $worksheet->protectCells($newReference, $value, true);
                 $worksheet->unprotectCells($cellAddress);
+                if ($newReference) {
+                    $worksheet->protectCells($newReference, $value, true);
+                }
             }
         }
     }
@@ -437,15 +445,20 @@ class ReferenceHelper
             $cell = $worksheet->getCell($coordinate);
             $cellIndex = Coordinate::columnIndexFromString($cell->getColumn());
 
-            if ($cellIndex - 1 + $numberOfColumns < 0) {
+            // Don't update cells that are being removed
+            if (
+                $numberOfColumns < 0 &&
+                $cellIndex >= $beforeColumn + $numberOfColumns &&
+                $cellIndex < $beforeColumn
+            ) {
                 continue;
             }
 
-            // New coordinate
-            $newCoordinate = Coordinate::stringFromColumnIndex($cellIndex + $numberOfColumns) . ($cell->getRow() + $numberOfRows);
-
             // Should the cell be updated? Move value and cellXf index from one cell to another.
             if (($cellIndex >= $beforeColumn) && ($cell->getRow() >= $beforeRow)) {
+                // New coordinate
+                $newCoordinate = Coordinate::stringFromColumnIndex($cellIndex + $numberOfColumns) . ($cell->getRow() + $numberOfRows);
+
                 // Update cell styles
                 $worksheet->getCell($newCoordinate)->setXfIndex($cell->getXfIndex());
 
@@ -950,6 +963,8 @@ class ReferenceHelper
             throw new Exception('Only cell ranges may be passed to this method.');
         }
 
+        $needToReindex = false;
+
         // Update range
         $range = Coordinate::splitRange($cellRange);
         $ic = count($range);
@@ -968,6 +983,24 @@ class ReferenceHelper
                     $range[$i][$j] = $this->cellReferenceHelper->updateCellReference($range[$i][$j], $includeAbsoluteReferences);
                 }
             }
+            if($jc == 2)
+            {
+                $currentRange = $range[$i][0] . ':' . $range[$i][1];
+                $dimensions   = Coordinate::rangeDimension($currentRange);
+                // If the entire range is being removed, one of the dimensions will be 0
+                if($dimensions[0] == 0 or $dimensions[1] == 0)
+                {
+                    unset($range[$i]);
+                    $needToReindex = true;
+                }
+            }
+        }
+        if ($needToReindex) {
+            // If all of the ranges have been removed, an empty string is desirable for many callers
+            if (!$range) {
+                return '';
+            }
+            $range = array_values($range);
         }
 
         // Recreate range string
