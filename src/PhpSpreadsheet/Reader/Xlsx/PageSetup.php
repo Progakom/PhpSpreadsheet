@@ -151,7 +151,7 @@ class PageSetup extends BaseParserClass
     private function rowBreaks(SimpleXMLElement $xmlSheet, Worksheet $worksheet): void
     {
         foreach ($xmlSheet->rowBreaks->brk as $brk) {
-            if ($brk['man']) {
+            if ($brk['man'] and $brk['id']) {
                 $worksheet->setBreak("A{$brk['id']}", Worksheet::BREAK_ROW);
             }
         }
